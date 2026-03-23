@@ -169,7 +169,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithRedirect, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp, query, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // ★ここに昨日のFirebase設定をそのまま貼り付けてください
@@ -233,7 +233,7 @@
         loginBtn.addEventListener('click', async () => {
             const provider = new GoogleAuthProvider();
             try {
-                await signInWithRedirect(auth, provider);
+                await signInWithPopup(auth, provider);
             } catch(e) {
                 alert("【エラー詳細】\n" + e.message);
             }
