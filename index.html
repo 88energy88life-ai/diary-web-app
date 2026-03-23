@@ -1,1 +1,474 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diary Sync Pro with AI & Voice</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js" type="module"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js" type="module"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js" type="module"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap');
+        body { font-family: 'Inter', 'Noto Sans JP', sans-serif; background-color: #f8fafc; }
+        .entry-card { animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        .modal-backdrop { background-color: rgba(15, 23, 42, 0.5); backdrop-filter: blur(4px); }
+        .prose h3 { font-size: 1.1em; font-weight: bold; margin-top: 1em; margin-bottom: 0.5em; color: #4338ca; }
+        .prose p { margin-bottom: 0.8em; line-height: 1.6; }
+        .prose ul { list-style-type: disc; padding-left: 1.5em; margin-bottom: 0.8em; }
+        .prose strong { color: #1e293b; font-weight: 700; }
+        .sparkle-btn { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); }
+        .recording { color: #ef4444 !important; background-color: #fef2f2 !important; animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse-ring { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+    </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden bg-slate-50 relative">
 
+    <div id="loginOverlay" class="fixed inset-0 z-[100] bg-slate-50 flex flex-col items-center justify-center p-4">
+        <div class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center max-w-md w-full">
+            <div class="bg-indigo-600 p-3 rounded-xl shadow-md inline-block mb-4">
+                <i data-lucide="book-open" class="text-white w-8 h-8"></i>
+            </div>
+            <h1 class="text-2xl font-bold text-slate-900 mb-2">Diary Sync Pro</h1>
+            <p class="text-slate-500 text-sm mb-8">自分専用の安全な環境でログインしてください</p>
+            <button id="loginBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold transition-colors flex items-center justify-center gap-2">
+                Googleでログイン
+            </button>
+        </div>
+    </div>
+
+    <header class="bg-white border-b border-slate-200 px-4 py-3 shrink-0 z-20 shadow-sm relative">
+        <div class="max-w-3xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="bg-indigo-600 p-2 rounded-xl shadow-md">
+                    <i data-lucide="book-open" class="text-white w-5 h-5"></i>
+                </div>
+                <div>
+                    <h1 class="text-base font-bold text-slate-800 leading-none">Diary Sync</h1>
+                    <p class="text-[10px] text-green-600 font-bold mt-1 flex items-center gap-1 uppercase">
+                        <span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Voice & AI Ready
+                    </p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button id="aiInsightBtn" class="flex items-center gap-1.5 sparkle-btn hover:opacity-90 text-white px-3 py-1.5 rounded-full text-xs font-bold transition-all shadow-md shadow-purple-100">
+                    <i data-lucide="sparkles" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">AI分析</span>
+                </button>
+                <a id="sheetJumpBtn" href="#" target="_blank" class="hidden flex items-center gap-1.5 bg-green-50 hover:bg-green-100 text-green-700 px-3 py-1.5 rounded-full text-xs font-bold transition-all border border-green-200">
+                    <i data-lucide="external-link" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">シート</span>
+                </a>
+                <button id="openSettingsBtn" class="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all">
+                    <i data-lucide="settings" class="w-5 h-5"></i>
+                </button>
+                <button id="logoutBtn" class="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all" title="ログアウト">
+                    <i data-lucide="log-out" class="w-5 h-5"></i>
+                </button>
+                <button id="exportBtn" class="bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-full text-xs font-bold transition-all hidden sm:flex items-center gap-1">
+                    <i data-lucide="download" class="w-3.5 h-3.5"></i> CSV
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <div class="bg-white border-b border-slate-200 p-4 shrink-0 z-10 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)]">
+        <div class="max-w-3xl mx-auto space-y-3">
+            <div id="imageUrlContainer" class="hidden">
+                <div class="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                    <i data-lucide="image" class="w-4 h-4 text-slate-400 ml-2"></i>
+                    <input id="imageUrlInput" type="url" placeholder="画像のURLを貼り付け..." class="flex-1 bg-transparent border-none focus:ring-0 text-xs outline-none">
+                    <button id="clearImageBtn" class="p-1 text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-4 h-4"></i></button>
+                </div>
+            </div>
+            <div class="flex items-center justify-between px-1">
+                <div class="flex items-center gap-2 sm:gap-4">
+                    <button id="toggleImageBtn" class="flex items-center gap-1.5 text-slate-400 hover:text-indigo-600 transition-colors p-1 rounded-md">
+                        <i data-lucide="image-plus" class="w-4 h-4"></i><span class="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">画像</span>
+                    </button>
+                    <button id="micBtn" class="flex items-center gap-1.5 text-slate-400 hover:text-indigo-600 transition-colors p-1.5 rounded-md" title="音声入力">
+                        <i data-lucide="mic" class="w-4 h-4"></i><span id="micText" class="text-[10px] font-bold uppercase tracking-wider hidden sm:inline">音声入力</span>
+                    </button>
+                    <label class="flex items-center gap-2 cursor-pointer ml-1">
+                        <input type="checkbox" id="autoSyncCheck" class="w-3.5 h-3.5 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500" checked>
+                        <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">シート送信</span>
+                    </label>
+                </div>
+                <button id="aiContinueBtn" class="text-[10px] font-bold text-indigo-500 hover:text-indigo-700 flex items-center gap-1 transition-colors px-2 py-1 rounded-full hover:bg-indigo-50 border border-transparent hover:border-indigo-100" title="続きを提案してもらう">
+                    <i data-lucide="pen-tool" class="w-3 h-3"></i> ✨続きを提案
+                </button>
+            </div>
+            <div class="flex items-end gap-2">
+                <div class="flex-1 bg-slate-50 border border-slate-200 rounded-2xl focus-within:bg-white focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/10 transition-all p-1.5 shadow-inner relative">
+                    <textarea id="diaryInput" rows="2" placeholder="今どんな気持ち？出来事を記録しよう..." class="w-full bg-transparent border-none focus:ring-0 resize-none px-3 py-2 text-slate-700 placeholder:text-slate-400 text-sm min-h-[60px] max-h-40 outline-none"></textarea>
+                </div>
+                <button id="sendBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white p-4 rounded-2xl shadow-lg shadow-indigo-200 flex-shrink-0 active:scale-95 transition-all h-full">
+                    <i data-lucide="send" class="w-5 h-5"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-slate-50 border-b border-slate-200 px-4 py-2 shrink-0 z-0">
+        <div class="max-w-3xl mx-auto relative">
+            <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+            <input id="searchInput" type="text" placeholder="過去の記憶を検索..." class="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all shadow-sm">
+        </div>
+    </div>
+
+    <main id="chatContainer" class="flex-1 overflow-y-auto px-4 py-6 scroll-smooth">
+        <div id="loading" class="flex flex-col items-center justify-center h-32 text-slate-400 hidden">
+            <div class="animate-spin rounded-full h-8 w-8 border-2 border-slate-200 border-t-indigo-600 mb-2"></div>
+            <p class="text-xs">データを読み込み中...</p>
+        </div>
+        <div id="entriesList" class="max-w-3xl mx-auto space-y-4 pb-10"></div>
+    </main>
+
+    <div id="settingsModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden">
+        <div class="bg-white rounded-3xl w-full max-w-md shadow-2xl p-6 border border-slate-100 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold text-slate-800">設定</h2>
+                <button id="closeSettingsBtn" class="p-1 text-slate-400 hover:bg-slate-100 rounded-full"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">GAS Web App URL (書き込み用)</label>
+                    <input id="gasUrlInput" type="url" placeholder="https://script.google.com/macros/s/..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">スプレッドシートのURL (閲覧用)</label>
+                    <input id="ssUrlInput" type="url" placeholder="https://docs.google.com/spreadsheets/d/..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1"><i data-lucide="key" class="w-3 h-3"></i> Gemini API Key</label>
+                    <input id="apiKeyInput" type="password" placeholder="AI機能を使うにはAPIキーを入力" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
+                </div>
+                <div class="pt-2 border-t border-slate-100 flex justify-between items-center">
+                    <button id="modalExportBtn" class="text-sm font-bold text-slate-600 hover:text-slate-800 flex items-center gap-1 p-2 rounded-lg hover:bg-slate-50 transition-colors sm:hidden"><i data-lucide="download" class="w-4 h-4"></i> CSV出力</button>
+                    <button id="saveSettingsBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-xl transition-all shadow-md flex-1 sm:flex-none sm:w-full ml-auto">設定を更新</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="aiModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop hidden">
+        <div class="bg-white rounded-3xl w-full max-w-lg shadow-2xl p-6 border border-slate-100 max-h-[80vh] flex flex-col">
+            <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
+                <div class="flex items-center gap-2 text-indigo-600"><i data-lucide="sparkles" class="w-5 h-5"></i><h2 class="text-lg font-bold">AI インサイト</h2></div>
+                <button id="closeAiModalBtn" class="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div id="aiContent" class="prose prose-sm overflow-y-auto flex-1 text-slate-700 pr-2"></div>
+        </div>
+    </div>
+
+    <div id="toastContainer" class="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 pointer-events-none flex flex-col items-center"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp, query, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // ★ここに昨日のFirebase設定をそのまま貼り付けてください
+        const firebaseConfig = {
+           apiKey: "AIzaSyBFqvV7cov0sz_bxjGjljR16FHgEwCUU1w",
+　　　　　　authDomain: "[side-job-app.firebaseapp.com](http://side-job-app.firebaseapp.com/)",
+　　　　　　projectId: "side-job-app",
+　　　　　　storageBucket: "side-job-app.firebasestorage.app",
+　　　　　　messagingSenderId: "710076523636",
+　　　　　　appId: "1:710076523636:web:f190ab44a964d8860c1d21"
+        };
+
+        const MY_EMAIL = "88energy.88life@gmail.com";
+        const appId = 'diary-sync-app';
+        const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbyc2obqdaRM5vYC0G0VLT3S9S0Ad5WuazT_BnTrdHaHsXI8VFrJVAFWdIA1VtnYloro/exec";
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        let currentUser = null;
+        let entries = [];
+        let filteredEntries = [];
+        let gasUrl = DEFAULT_GAS_URL;
+        let spreadsheetUrl = '';
+        let searchTerm = '';
+        let userApiKey = "";
+
+        const GEMINI_MODEL = "gemini-2.5-flash"; // 安定版の2.5に指定変更
+
+        // Elements
+        const chatContainer = document.getElementById('chatContainer');
+        const entriesList = document.getElementById('entriesList');
+        const diaryInput = document.getElementById('diaryInput');
+        const imageUrlInput = document.getElementById('imageUrlInput');
+        const imageUrlContainer = document.getElementById('imageUrlContainer');
+        const sendBtn = document.getElementById('sendBtn');
+        const autoSyncCheck = document.getElementById('autoSyncCheck');
+        const gasUrlInput = document.getElementById('gasUrlInput');
+        const ssUrlInput = document.getElementById('ssUrlInput');
+        const apiKeyInput = document.getElementById('apiKeyInput');
+        const searchInput = document.getElementById('searchInput');
+        const sheetJumpBtn = document.getElementById('sheetJumpBtn');
+        const loadingEl = document.getElementById('loading');
+        const exportBtn = document.getElementById('exportBtn');
+        const modalExportBtn = document.getElementById('modalExportBtn');
+        const loginOverlay = document.getElementById('loginOverlay');
+        const loginBtn = document.getElementById('loginBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+
+        // AI & Voice Elements
+        const aiInsightBtn = document.getElementById('aiInsightBtn');
+        const aiContinueBtn = document.getElementById('aiContinueBtn');
+        const aiModal = document.getElementById('aiModal');
+        const closeAiModalBtn = document.getElementById('closeAiModalBtn');
+        const aiContent = document.getElementById('aiContent');
+        const micBtn = document.getElementById('micBtn');
+        const micText = document.getElementById('micText');
+
+        // Auth Logic
+        loginBtn.addEventListener('click', async () => {
+            const provider = new GoogleAuthProvider();
+            try {
+                await signInWithPopup(auth, provider);
+            } catch(e) {
+                showToast("ログインに失敗しました", "error");
+            }
+        });
+
+        logoutBtn.addEventListener('click', () => {
+            if(confirm("ログアウトしますか？")) signOut(auth);
+        });
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                if (user.email === MY_EMAIL) {
+                    currentUser = user;
+                    loginOverlay.classList.add('hidden');
+                    loadingEl.classList.remove('hidden');
+
+                    const config = await getDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'config'));
+                    if (config.exists()) {
+                        gasUrl = config.data().gasUrl || DEFAULT_GAS_URL;
+                        spreadsheetUrl = config.data().spreadsheetUrl || '';
+                        userApiKey = config.data().apiKey || "";
+                    }
+                    gasUrlInput.value = gasUrl;
+                    ssUrlInput.value = spreadsheetUrl;
+                    apiKeyInput.value = userApiKey;
+                    updateJumpButton(spreadsheetUrl);
+
+                    onSnapshot(query(collection(db, 'artifacts', appId, 'users', user.uid, 'diary_entries')), (snap) => {
+                        entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                        entries.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+                        render();
+                        loadingEl.classList.add('hidden');
+                    });
+                } else {
+                    alert("アクセス権がありません。");
+                    signOut(auth);
+                }
+            } else {
+                currentUser = null;
+                loginOverlay.classList.remove('hidden');
+            }
+        });
+
+        // Voice Recognition Setup
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition = null;
+        let isRecording = false;
+
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = false;
+            recognition.lang = 'ja-JP';
+
+            recognition.onresult = (event) => {
+                let finalTranscript = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript;
+                }
+                if (finalTranscript) {
+                    const currentVal = diaryInput.value;
+                    const space = (currentVal === '' || currentVal.endsWith('\n') || currentVal.endsWith(' ')) ? '' : ' ';
+                    diaryInput.value = currentVal + space + finalTranscript;
+                    diaryInput.style.height = 'auto';
+                    diaryInput.style.height = diaryInput.scrollHeight + 'px';
+                }
+            };
+            recognition.onerror = () => stopRecording();
+            recognition.onend = () => { if (isRecording) { try { recognition.start(); } catch(e) { stopRecording(); } } else { stopRecording(); } };
+        } else {
+            micBtn.style.display = 'none';
+        }
+
+        const stopRecording = () => { if(recognition) recognition.stop(); isRecording = false; micBtn.classList.remove('recording'); if(micText) micText.textContent = "音声入力"; };
+        const startRecording = () => { try { if(recognition) recognition.start(); isRecording = true; micBtn.classList.add('recording'); if(micText) micText.textContent = "録音中..."; showToast("音声入力を開始しました"); } catch(e) { console.error(e); } };
+
+        micBtn.addEventListener('click', () => {
+            if (!SpeechRecognition) return showToast("お使いのブラウザは音声入力に未対応です", "error");
+            if (isRecording) { stopRecording(); showToast("音声入力を終了しました"); } else { startRecording(); }
+        });
+
+        // Utils
+        const showToast = (msg, type = 'success') => {
+            const toast = document.createElement('div');
+            toast.className = `px-5 py-2.5 rounded-full shadow-xl text-xs font-bold mb-3 transition-all duration-300 transform translate-y-4 opacity-0 border ${type === 'success' ? 'bg-white text-slate-800 border-slate-100' : 'bg-red-500 text-white border-red-400'}`;
+            toast.innerHTML = `<div class="flex items-center gap-2"><i data-lucide="${type === 'success' ? 'check-circle' : 'alert-circle'}" class="w-4 h-4 ${type === 'success' ? 'text-green-500' : ''}"></i><span>${msg}</span></div>`;
+            document.getElementById('toastContainer').appendChild(toast);
+            lucide.createIcons();
+            setTimeout(() => toast.classList.remove('translate-y-4', 'opacity-0'), 10);
+            setTimeout(() => { toast.classList.add('opacity-0'); setTimeout(() => toast.remove(), 300); }, 3000);
+        };
+
+        const updateJumpButton = (url) => {
+            if (url && url.startsWith('http')) { sheetJumpBtn.href = url; sheetJumpBtn.classList.remove('hidden'); } else { sheetJumpBtn.classList.add('hidden'); }
+        };
+
+        const formatDate = (date) => {
+            const y = date.getFullYear(); const m = ("0" + (date.getMonth() + 1)).slice(-2); const d = ("0" + date.getDate()).slice(-2);
+            return `${y}/${m}/${d}`;
+        };
+
+        // Gemini API
+        async function callGemini(prompt, systemInstruction = "") {
+            if (!userApiKey) throw new Error("設定からGemini APIキーを入力してください。");
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${userApiKey}`;
+            const payload = { contents: [{ parts: [{ text: prompt }] }], systemInstruction: { parts: [{ text: systemInstruction }] } };
+            try {
+                const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                if (response.status === 400 || response.status === 401 || response.status === 403) throw new Error("APIキーが無効です。");
+                if (!response.ok) throw new Error(`API エラー: ${response.status}`);
+                const data = await response.json();
+                return data.candidates?.[0]?.content?.parts?.[0]?.text || "応答を取得できませんでした。";
+            } catch (error) { throw error; }
+        }
+
+        // Feature 1: AI Insight
+        aiInsightBtn.addEventListener('click', async () => {
+            if (!userApiKey) { showToast("設定からAPIキーを登録してください", "error"); document.getElementById('settingsModal').classList.remove('hidden'); return; }
+            if (filteredEntries.length === 0) { showToast("分析する日記がありません", "error"); return; }
+            aiModal.classList.remove('hidden');
+            aiContent.innerHTML = `<div class="flex flex-col items-center justify-center h-40 space-y-3"><div class="animate-spin rounded-full h-8 w-8 border-2 border-indigo-200 border-t-indigo-600"></div><p class="text-sm text-slate-500 animate-pulse">Geminiが分析中...</p></div>`;
+            const analysisData = filteredEntries.slice(0, 20).map(e => {
+                const d = e.createdAt && e.createdAt.seconds ? new Date(e.createdAt.seconds * 1000) : new Date();
+                return `- ${d.toLocaleDateString()}: ${e.text}`;
+            }).join("\n");
+            const systemPrompt = "あなたは親切で洞察力のある心理カウンセラー兼AIアシスタントです。ユーザーの日記を読み、以下の点について簡潔かつ温かい口調でフィードバックを行ってください。\n1. 最近の気分の傾向やテーマ\n2. ユーザーの良い点や頑張っている点\n3. 明日に向けた小さなアドバイス\n※マークダウン形式で見やすく整形してください。";
+            try {
+                const result = await callGemini(`以下の日記データを分析してください：\n\n${analysisData}`, systemPrompt);
+                aiContent.innerHTML = marked.parse(result);
+            } catch (err) {
+                aiContent.innerHTML = `<div class="text-red-500 font-medium text-center py-10"><i data-lucide="alert-triangle" class="w-8 h-8 mx-auto mb-2"></i>${err.message}</div>`;
+                lucide.createIcons();
+            }
+        });
+
+        // Feature 2: AI Continue
+        aiContinueBtn.addEventListener('click', async () => {
+            if (!userApiKey) return showToast("設定からAPIキーを登録してください", "error");
+            const currentText = diaryInput.value;
+            if (currentText.length < 5) return showToast("もう少し書いてからAIに聞いてみましょう", "error");
+            const originalBtnText = aiContinueBtn.innerHTML;
+            aiContinueBtn.disabled = true; aiContinueBtn.innerHTML = `<div class="animate-spin rounded-full h-3 w-3 border-2 border-indigo-200 border-t-indigo-600"></div>`;
+            const systemPrompt = "あなたはユーザーの日記執筆をサポートするAIです。書きかけた文章の続きとして、自然で共感的な文章を1〜2文提案してください。出力は提案する文章のみとしてください。";
+            try {
+                const suggestion = await callGemini(`以下の書きかけの日記の続きを提案してください：\n"${currentText}"`, systemPrompt);
+                let cleanSuggestion = suggestion.replace(/^「/, '').replace(/」$/, '').replace(/^"/, '').replace(/"$/, '').trim();
+                if (!currentText.endsWith(' ') && !currentText.endsWith('\n') && !currentText.endsWith('。')) diaryInput.value += " " + cleanSuggestion; else diaryInput.value += cleanSuggestion;
+                diaryInput.style.height = 'auto'; diaryInput.style.height = diaryInput.scrollHeight + 'px';
+                showToast("続きを提案しました✨");
+            } catch (e) { showToast(e.message, "error"); } finally { aiContinueBtn.disabled = false; aiContinueBtn.innerHTML = originalBtnText; }
+        });
+
+        closeAiModalBtn.addEventListener('click', () => aiModal.classList.add('hidden'));
+        aiModal.addEventListener('click', (e) => { if (e.target === aiModal) aiModal.classList.add('hidden'); });
+
+        function render() {
+            filteredEntries = entries.filter(e => e.text.toLowerCase().includes(searchTerm.toLowerCase()));
+            if (filteredEntries.length === 0) { entriesList.innerHTML = `<div class="text-center py-20 text-slate-300 text-xs font-bold uppercase tracking-widest">${searchTerm ? '見つかりませんでした' : '記録がありません'}</div>`; return; }
+            entriesList.innerHTML = filteredEntries.map(e => {
+                const d = e.createdAt && e.createdAt.seconds ? new Date(e.createdAt.seconds * 1000) : new Date();
+                const dateStr = formatDate(d); const timeStr = d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                return `
+                <div class="entry-card bg-white p-5 rounded-2xl border border-slate-100 shadow-sm relative group">
+                    <div class="flex justify-between items-center mb-3 border-b border-slate-50 pb-2">
+                        <span class="text-[10px] font-bold text-indigo-500 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded">${dateStr} ${timeStr}</span>
+                        <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onclick="window.resync('${e.id}')" class="text-[9px] font-black text-slate-400 hover:text-green-500 transition-colors uppercase flex items-center gap-1"><i data-lucide="refresh-cw" class="w-3 h-3"></i> 再送信</button>
+                        </div>
+                    </div>
+                    <p class="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">${escapeHtml(e.text)}</p>
+                    ${e.imageUrl ? `<img src="${e.imageUrl}" class="mt-3 rounded-xl w-full max-h-60 object-contain bg-slate-50 border border-slate-50" onerror="this.style.display='none'">` : ''}
+                </div>`;
+            }).join('');
+            lucide.createIcons();
+        }
+
+        function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+
+        window.resync = async (id) => { const e = entries.find(x => x.id === id); if (!e) return; showToast("再送信中..."); await sendToSheet(e); showToast("シートを更新しました"); };
+
+        async function sendToSheet(data) {
+            if (!gasUrl) return;
+            const d = (data.createdAt && typeof data.createdAt.seconds === 'number') ? new Date(data.createdAt.seconds * 1000) : new Date();
+            try { await fetch(gasUrl, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ date: formatDate(d), time: d.toLocaleTimeString('ja-JP'), text: data.text, imageUrl: data.imageUrl || "" }) }); } catch (err) { console.error(err); }
+        }
+
+        async function add() {
+            const text = diaryInput.value.trim(); const imageUrl = document.getElementById('imageUrlInput').value.trim();
+            if (!text || !currentUser) return;
+            sendBtn.disabled = true;
+            try {
+                const entryData = { text, imageUrl: imageUrl || null, createdAt: serverTimestamp() };
+                await addDoc(collection(db, 'artifacts', appId, 'users', currentUser.uid, 'diary_entries'), entryData);
+                if (autoSyncCheck.checked) sendToSheet({...entryData, createdAt: { seconds: Date.now() / 1000 }});
+                diaryInput.value = ''; diaryInput.style.height = 'auto'; document.getElementById('imageUrlInput').value = ''; imageUrlContainer.classList.add('hidden');
+                if(isRecording) stopRecording();
+                showToast("保存しました");
+                chatContainer.scrollTo({ top: 0, behavior: 'smooth' });
+            } finally { sendBtn.disabled = false; }
+        }
+
+        function exportToCSV() {
+            if (entries.length === 0) return showToast("データがありません", "error");
+            const headers = ["日付", "時刻", "本文", "画像URL"];
+            const rows = entries.map(entry => {
+                const d = entry.createdAt && entry.createdAt.seconds ? new Date(entry.createdAt.seconds * 1000) : new Date();
+                return [formatDate(d), d.toLocaleTimeString('ja-JP'), `"${entry.text.replace(/"/g, '""')}"`, entry.imageUrl ? `"${entry.imageUrl}"` : '""'].join(',');
+            });
+            const csvContent = "\uFEFF" + headers.join(',') + "\n" + rows.join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.setAttribute("href", URL.createObjectURL(blob));
+            link.setAttribute("download", `diary_export_${new Date().getTime()}.csv`);
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        }
+
+        exportBtn.addEventListener('click', exportToCSV);
+        modalExportBtn.addEventListener('click', () => { exportToCSV(); document.getElementById('settingsModal').classList.add('hidden'); });
+        searchInput.addEventListener('input', (e) => { searchTerm = e.target.value; render(); });
+        sendBtn.addEventListener('click', add);
+        document.getElementById('toggleImageBtn').addEventListener('click', () => imageUrlContainer.classList.toggle('hidden'));
+        document.getElementById('clearImageBtn').addEventListener('click', () => { document.getElementById('imageUrlInput').value = ''; imageUrlContainer.classList.add('hidden'); });
+
+        document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
+            gasUrl = gasUrlInput.value.trim(); spreadsheetUrl = ssUrlInput.value.trim(); userApiKey = apiKeyInput.value.trim();
+            await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'settings', 'config'), { gasUrl, spreadsheetUrl, apiKey: userApiKey });
+            updateJumpButton(spreadsheetUrl); showToast("設定を更新しました"); document.getElementById('settingsModal').classList.add('hidden');
+        });
+
+        document.getElementById('openSettingsBtn').addEventListener('click', () => document.getElementById('settingsModal').classList.remove('hidden'));
+        document.getElementById('closeSettingsBtn').addEventListener('click', () => document.getElementById('settingsModal').classList.add('hidden'));
+        diaryInput.addEventListener('input', () => { diaryInput.style.height = 'auto'; diaryInput.style.height = diaryInput.scrollHeight + 'px'; });
+        diaryInput.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); add(); } });
+
+        window.onload = () => lucide.createIcons();
+    </script>
+</body>
+</html>
